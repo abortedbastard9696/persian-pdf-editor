@@ -597,8 +597,8 @@ textarea{width:100%;height:230px;border:1px solid #ccd;border-radius:8px;padding
 </head>
 <body>
 <div class="wrap">
-  <h1>ویرایشگر PDF فارسی–انگلیسی</h1>
-  <p class="sub">اصلاح جهت نوشتار، جداسازی کلمات چسبیده و بازسازی پاراگراف‌ها</p>
+  <h1>ویرایشگر PDF فارسی–انگلیسی — نسخه ۴</h1>
+  <p class="sub">اصلاح آزمایشی نویسه‌های فارسی و فاصله‌های مصنوعی؛ حفظ دقیق جدول‌ها و صفحه‌آرایی تضمین نمی‌شود</p>
   <div id="libBanner" class="banner warn">در حال بارگذاری کتابخانه‌ی خواندن PDF… اگر این پیام ماند، از تب «کپی متن» استفاده کنید یا اتصال اینترنت را بررسی کنید.</div>
   <div class="card">
     <div class="tabs">
@@ -670,12 +670,34 @@ async function readPdf(file){
   finally{busy(false)}
 }
 function linesFromItems(items){
-  var rows={};items.forEach(function(it){if(!it.str||!it.str.trim())return;var y=Math.round(it.transform[5]/3)*3;var x=it.transform[4];(rows[y]=rows[y]||[]).push({x:x,s:it.str})});
-  var ys=Object.keys(rows).map(Number).sort(function(a,b){return b-a});var lines=[];
-  ys.forEach(function(y){var cells=rows[y];var joined=cells.map(function(c){return c.s}).join('');var rtl=isFaLine(joined);cells.sort(function(a,b){return rtl?b.x-a.x:a.x-b.x});var line='';for(var i=0;i<cells.length;i++){if(i>0)line+=' ';line+=cells[i].s}lines.push(line.replace(/\s+/g,' ').trim())});
-  return lines.filter(Boolean).join('\n');
+  // Preserve actual PDF geometry instead of inserting a space between every item.
+  var rows={};items.forEach(function(it){if(!it.str||!it.str.trim())return;var y=Math.round(it.transform[5]/3)*3;var x=it.transform[4];(rows[y]=rows[y]||[]).push({x:x,s:it.str,w:it.width||0})});
+  return Object.keys(rows).map(Number).sort(function(a,b){return b-a}).map(function(y){
+    var cells=rows[y],rtl=isFaLine(cells.map(function(c){return c.s}).join(''));
+    cells.sort(function(a,b){return rtl?b.x-a.x:a.x-b.x});
+    var line='',prev=null;
+    cells.forEach(function(c){
+      if(prev){var gap=rtl?(prev.x-(c.x+c.w)):(c.x-(prev.x+prev.w));
+        var cw=(c.w/Math.max(c.s.length,1));var pw=(prev.w/Math.max(prev.s.length,1));var threshold=Math.max(1.5,Math.min(6,Math.min(cw,pw)*0.45));
+        if(gap>threshold)line+=' ';
+      }
+      line+=c.s;prev=c;
+    });
+    return line.replace(/[ \t]{2,}/g,' ').trim();
+  }).filter(Boolean).join('\n');
 }
-function normArabic(t){return t.replace(/\u064A/g,'\u06CC').replace(/\u0643/g,'\u06A9').replace(/\u0629/g,'\u0647').replace(/\u0640+/g,'').replace(/\u200C{2,}/g,'\u200C')}
+function normalizePersian(t){
+  // NFKC converts Arabic Presentation Forms (ﺑ ﺮ ...) to normal Unicode letters.
+  // Word-boundary reconstruction is handled from PDF geometry in linesFromItems().
+  // We deliberately do NOT remove spaces between Persian letters here, because
+  // doing so can accidentally join separate words.
+  return t.normalize('NFKC')
+    .replace(/[يى]/g,'ی')
+    .replace(/ك/g,'ک')
+    .replace(/ـ+/g,'')
+    .replace(/\u200C{2,}/g,'\u200C');
+}
+function normArabic(t){return normalizePersian(t)}
 function fixJoins(t){t=t.replace(/([\u0600-\u06FF])([A-Za-z])/g,'$1 $2');t=t.replace(/([A-Za-z])([\u0600-\u06FF])/g,'$1 $2');t=t.replace(/([\u0600-\u06FF])(\d)/g,'$1 $2');t=t.replace(/(\d)([\u0600-\u06FF])/g,'$1 $2');return t.replace(/[ \t]{2,}/g,' ')}
 function fixPunc(t){t=t.replace(/\s+([،؛؟!٪,:;])/g,'$1');t=t.replace(/([،؛?!])(?=[^\s\d])/g,'$1 ');return t.replace(/\.{3,}/g,'…')}
 function toFaDigits(t){var map={'0':'۰','1':'۱','2':'۲','3':'۳','4':'۴','5':'۵','6':'۶','7':'۷','8':'۸','9':'۹'};return t.replace(/[0-9]/g,function(d){return map[d]})}
